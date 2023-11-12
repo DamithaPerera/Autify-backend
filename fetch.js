@@ -1,8 +1,10 @@
 const fs = require('fs');
+const { promises: fsPromises } = require('fs');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const {DateTime} = require('luxon');
 const path = require('path');
+const urlModule = require('url');
 
 /**
  * Get content from the url
@@ -23,16 +25,42 @@ async function fetch(url) {
  * function to save html content to file
  * @param url
  * @param content
- * @returns {Promise<null|*>}
+ * @returns {Promise<string|null>}
  */
 async function saveToFile(url, content) {
     try {
-        // generate file name from the url
-        const fileName = path.join(__dirname, `${url.replace(/https?:\/\//, '')}.html`);
-        // write content to file
-        await fs.promises.writeFile(fileName, content);
+        // Create a folder for each site to store assets
+        const siteFolder = path.join(__dirname, `${url.replace(/https?:\/\//, '')}`);
+        await fsPromises.mkdir(siteFolder, { recursive: true });
+
+        // generate file name for the HTML file
+        const fileName = path.join(siteFolder, 'index.html');
+        // write HTML content to file
+        await fsPromises.writeFile(fileName, content);
+
+        // Parse the HTML content using Cheerio
+        const $ = cheerio.load(content);
+
+        // Download and save linked assets (stylesheets, images, scripts, etc.)
+        const assetPromises = [];
+
+        $('link[rel="stylesheet"], script, img').each((index, element) => {
+            const assetUrl = $(element).attr('href') || $(element).attr('src');
+            if (assetUrl) {
+                const absoluteAssetUrl = urlModule.resolve(url, assetUrl);
+                const assetFileName = path.join(siteFolder, path.basename(absoluteAssetUrl));
+                assetPromises.push(
+                    axios.get(absoluteAssetUrl, { responseType: 'arraybuffer' })
+                        .then((response) => fsPromises.writeFile(assetFileName, response.data))
+                        .catch((error) => console.error(`Error saving asset ${assetUrl}: ${error.message}`))
+                );
+            }
+        });
+
+        await Promise.all(assetPromises);
+
         // success message log
-        console.log(`Saved ${url} to ${fileName}`);
+        console.log(`Saved ${url} to ${fileName} with assets`);
         return fileName;
     } catch (error) {
         // log error if file saving fails
@@ -71,19 +99,18 @@ function printMetadata(metadata, url) {
  * orchestrate the process
  * @returns {Promise<void>}
  */
-async function main() {
-    // Get command line arguments
-    const args = process.argv.slice(2);
+async function main(urls) {
     // Check if at least one URL is provided
-    if (args.length === 0) {
+    if (urls.length === 0) {
         console.error('Please provide at least one URL');
         process.exit(1);
     }
     // Check if metadata flag is present
-    const metadataFlagIndex = args.indexOf('--metadata');
+    const metadataFlagIndex = urls.indexOf('--metadata');
     const isMetadataRequested = metadataFlagIndex !== -1;
+
     // Fetch content for each URL concurrently
-    await Promise.all(args.map(async (url) => {
+    await Promise.all(urls.map(async (url) => {
         // Fetch HTML content
         const html = await fetch(url);
 
@@ -110,5 +137,17 @@ async function main() {
     }));
 }
 
-// the main function
-main();
+// If the script is run from the command line, call main with command line arguments
+if (require.main === module) {
+    const args = process.argv.slice(2);
+    main(args);
+}
+
+module.exports = {
+    fetch,
+    saveToFile,
+    getMetadata,
+    printMetadata,
+    main,
+};
+
