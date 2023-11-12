@@ -1,5 +1,4 @@
-const fs = require('fs');
-const { promises: fsPromises } = require('fs');
+const {promises: fsPromises} = require('fs');
 const axios = require('axios');
 const cheerio = require('cheerio');
 const {DateTime} = require('luxon');
@@ -31,7 +30,7 @@ async function saveToFile(url, content) {
     try {
         // Create a folder for each site to store assets
         const siteFolder = path.join(__dirname, `${url.replace(/https?:\/\//, '')}`);
-        await fsPromises.mkdir(siteFolder, { recursive: true });
+        await fsPromises.mkdir(siteFolder, {recursive: true});
 
         // generate file name for the HTML file
         const fileName = path.join(siteFolder, 'index.html');
@@ -50,9 +49,12 @@ async function saveToFile(url, content) {
                 const absoluteAssetUrl = urlModule.resolve(url, assetUrl);
                 const assetFileName = path.join(siteFolder, path.basename(absoluteAssetUrl));
                 assetPromises.push(
-                    axios.get(absoluteAssetUrl, { responseType: 'arraybuffer' })
+                    axios.get(absoluteAssetUrl, {responseType: 'arraybuffer'})
                         .then((response) => fsPromises.writeFile(assetFileName, response.data))
-                        .catch((error) => console.error(`Error saving asset ${assetUrl}: ${error.message}`))
+                        .catch((error) => {
+                            console.error(`Error saving asset ${assetUrl}: ${error.message}`);
+                            return null; // Reject the promise with null in case of an error
+                        })
                 );
             }
         });
