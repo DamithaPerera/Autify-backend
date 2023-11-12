@@ -72,30 +72,43 @@ function printMetadata(metadata, url) {
  * @returns {Promise<void>}
  */
 async function main() {
-    // get command line argument
+    // Get command line arguments
     const args = process.argv.slice(2);
-    // if at least one URL is provided
+    // Check if at least one URL is provided
     if (args.length === 0) {
         console.error('Please provide at least one URL');
         process.exit(1);
     }
-    // if metadata flag is present
+    // Check if metadata flag is present
     const metadataFlagIndex = args.indexOf('--metadata');
     const isMetadataRequested = metadataFlagIndex !== -1;
     // Fetch content for each URL concurrently
     await Promise.all(args.map(async (url) => {
+        // Fetch HTML content
         const html = await fetch(url);
-        // Process HTML if fetched successfully
-        if (html) {
-            // save HTML content to file
-            await saveToFile(url, html);
-            // print metadata
-            if (isMetadataRequested) {
-                const metadata = getMetadata(html);
+
+        // Check if HTML was fetched successfully
+        if (!html) {
+            console.error(`Failed to fetch HTML from ${url}`);
+            return; // Skip to the next iteration
+        }
+
+        // Save HTML content to file
+        await saveToFile(url, html);
+
+        // Print metadata if requested
+        if (isMetadataRequested) {
+            const metadata = getMetadata(html);
+
+            // Guard condition: Check if metadata is available
+            if (metadata) {
                 printMetadata(metadata, url);
+            } else {
+                console.error(`Failed to retrieve metadata from ${url}`);
             }
         }
     }));
 }
 
+// the main function
 main();
